@@ -4,22 +4,29 @@ class Wrong_Board(Exception):
     pass
 class Board:
     def __init__(self):
-        print("Give numbers without any spaces. If number is not given, print 0")
+        #print("Give numbers without any spaces. If number is not given, print 0")
         #self.board = np.zeros((9,9),dtype=int)
         #for i in range(9):
         #    x = list(input("Row nr " + str(i+1) + " "))
         #    self.board[i,:] = x
-        self.board = np.array([[2,4,6,0,7,0,0,3,8],
-                      [0,0,0,3,0,6,0,7,4],
-                      [3,7,0,0,4,0,6,0,0],
-                      [0,0,8,0,2,0,7,0,0],
-                      [1,0,0,0,0,0,0,0,6],
-                      [0,0,7,0,3,0,4,0,0],
-                      [0,0,4,0,8,0,0,6,9],
-                      [8,6,0,4,0,0,0,0,7],
-                      [9,1,0,0,6,0,0,4,2]])
+
+        self.board = np.array([[2, 0, 0, 0, 7, 0, 0, 3, 8],
+                               [0, 0, 0, 0, 0, 6, 0, 7, 0],
+                               [3, 0, 0, 0, 4, 0, 6, 0, 0],
+                               [0, 0, 8, 0, 2, 0, 7, 0, 0],
+                               [1, 0, 0, 0, 0, 0, 0, 0, 6],
+                               [0, 0, 7, 0, 3, 0, 4, 0, 0],
+                               [0, 0, 4, 0, 8, 0, 0, 0, 9],
+                               [8, 6, 0, 4, 0, 0, 0, 0, 0],
+                               [9, 1, 0, 0, 6, 0, 0, 0, 2]])
         self.check_if_correct()
         self.possible = np.array(self.board)
+        self.simple_elimination()
+        self.color = [1 if x > 0 else 0 for x in self.board.flatten()]
+        self.color = np.array(self.color).reshape((9, 9))
+        self.strategy = 1
+
+
     def check_if_correct(self):
         temp = np.array(self.board)
         try:
@@ -58,7 +65,7 @@ class Board:
                 print('├'+('─'*31+'┼')*2+'─'*31+'┤')
         print('╘' + ('=' * 31 + '╧') * 2 + '=' * 31 + '╛')
     def simple_elimination(self):
-        for i in range(80):
+        for i in range(81):
             row = i//9
             col = i%9
             if self.board[row,col] == 0:
@@ -66,7 +73,7 @@ class Board:
 
     def simple_elimination_cell(self,row,col):
         cell = set()
-        square = self.board[row//3*3:row//3*3+3,col//3*3:col//3*3+3].flatten()
+        square, _ = self.square_and_index(row,col)
         for i in range(9):
             cell.add(self.board[row,i])
             cell.add(self.board[i,col])
@@ -81,19 +88,21 @@ class Board:
         else:
             return False
 
-    def naked_single(self):
-        log = np.logical_and(self.possible<10,self.possible!=self.board)
-        idxs = list(zip(*np.where(log==True)))
-        if not idxs:
-            return False
-        for i in idxs:
-            self.board[i] = self.possible[i]
-            self.update_possible(*i)
-        self.naked_single()
+    def naked_single(self,strategy):
+        flag = 1
+        while flag:
+            flag = 0
+            log = np.logical_and(self.possible<10,self.possible!=self.board)
+            idxs = list(zip(*np.where(log==True)))
+            for i in idxs:
+                self.board[i] = self.possible[i]
+                self.color[i] = strategy
+                self.update_possible(*i)
+                flag = 1
+
 
     def update_possible(self,row,col):
-        square = self.possible[row//3*3:row//3*3+3,col//3*3:col//3*3+3].flatten()
-        square_idx = np.argwhere(square==self.possible[row,col])[0]
+        square, square_idx = self.square_and_index(row,col)
         number = set(str(self.possible[row,col]))
         for x in range(9):
             if x!=square_idx:
@@ -109,9 +118,49 @@ class Board:
                 new_val = set(str(self.possible[row, x])).difference(number)
                 new_val = int(reduce(lambda a, b: str(a) + str(b), new_val))
                 self.possible[row, x] = new_val
+    def hidden_single(self,strategy):
+        flag = 1
+        while flag:
+            flag = 0
+            for i in range(81):
+                row = i//9
+                col = i%9
+                if self.possible[row,col] > 9:
+                    num =  self.is_hidden_single(row,col)
+                    if num != 0:
+                        self.possible[row, col] = num
+                        self.board[row,col] = num
+                        self.color[row,col] = strategy
+                        self.update_possible(row,col)
+                        flag = 1
 
 
+    def is_hidden_single(self, row, col):
+        nums = [int(x) for x in str(self.possible[row,col])]
+        for num in nums:
+            for i in range(9):
+                if i != col:
+                    if num in [int(x) for x in str(self.possible[row,i])]:
+                        break
+            else:
+                return num
+            for i in range(9):
+                if i != row:
+                    if num in [int(x) for x in str(self.possible[i, col])]:
+                        break
+            else:
+                return num
+            square, square_idx = self.square_and_index(row,col)
+            for i in range(9):
+                if i != square_idx:
+                    if num in [int(x) for x in str(square[i])]:
+                        break
+            else:
+                return num
+        return 0
 
-
-
+    def square_and_index(self,row,col):
+        square = self.possible[row // 3 * 3:row // 3 * 3 + 3, col // 3 * 3:col // 3 * 3 + 3].flatten()
+        idx = np.argwhere(square == self.possible[row, col])[0]
+        return square, idx
 
